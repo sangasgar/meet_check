@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "f=$(node -e \"try{const d=JSON.parse(require('fs').readFileSync(0,'utf8'));process.stdout.write((d.tool_input&&d.tool_input.file_path)||'')}catch(e){}\"); [ -n \"$f\" ] && npx prettier --write --ignore-unknown \"$f\" 2>/dev/null || true",
+            "command": "f=$(node -e \"try{const p=require('path');const d=JSON.parse(require('fs').readFileSync(0,'utf8'));const f=(d.tool_input&&d.tool_input.file_path)||'';const r=p.relative(process.cwd(),f);if(f&&r&&!r.startsWith('..')&&!p.isAbsolute(r))process.stdout.write(f)}catch(e){}\"); [ -n \"$f\" ] && npx prettier --write --ignore-unknown \"$f\" 2>/dev/null || true",
             "timeout": 60,
             "statusMessage": "Prettier: форматирование файла…"
           }

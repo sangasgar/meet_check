@@ -6,12 +6,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Монорепозиторий на npm workspaces (Node.js >= 20) с двумя приложениями:
 
-| Приложение | Путь       | Стек                    | Порт (dev)                 |
-| ---------- | ---------- | ----------------------- | -------------------------- |
-| `web`      | `apps/web` | Next.js 16 (App Router) | 3000                       |
+| Приложение | Путь       | Стек                    | Порт (dev)                     |
+| ---------- | ---------- | ----------------------- | ------------------------------ |
+| `web`      | `apps/web` | Next.js 16 (App Router) | 3000                           |
 | `api`      | `apps/api` | NestJS 11               | 3001 (переопределяется `PORT`) |
 
 У каждого приложения есть свой `CLAUDE.md` с деталями — читай его при работе внутри `apps/web` или `apps/api`.
+
+## Инфраструктура
+
+PostgreSQL 17 поднимается через `docker-compose.yml` в корне:
+
+```bash
+docker compose up -d     # запустить Postgres (localhost:5432)
+docker compose down      # остановить (данные сохраняются в volume postgres_data)
+```
+
+Параметры подключения (dev): база `meet_startap`, пользователь/пароль `postgres`/`postgres`.
 
 **Важно про web:** используется Next.js 16 с breaking changes относительно предыдущих версий — перед написанием кода в `apps/web` читай гайды в `apps/web/node_modules/next/dist/docs/` (подробнее в `apps/web/AGENTS.md`).
 

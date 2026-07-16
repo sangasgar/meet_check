@@ -6,6 +6,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `api` — бэкенд монорепозитория (см. корневой `CLAUDE.md`): NestJS 11, TypeScript, Jest. Точка входа `src/main.ts` поднимает `AppModule` на порту `3001` (переопределяется переменной `PORT`).
 
+## Переменные окружения
+
+Загружаются через `@nestjs/config` из `.env` в этой директории (в git не попадает, образец — `.env.example`):
+
+- `JWT_SECRET` — секрет подписи JWT, обязателен (без него приложение не стартует).
+
+## Модули
+
+- `src/auth` — аутентификация: `AuthService` (`login`, `register`, bcrypt-хеширование, выдача JWT на 15 минут через `@nestjs/jwt`), `AuthController` (`POST /auth/register`, `POST /auth/login` → `201 { accessToken }`; `400` при невалидном теле, `401` при неверных данных входа, `409` при занятом e-mail). DTO валидируются глобальным `ValidationPipe` (провайдер `APP_PIPE` в `AppModule`).
+- `src/users` — пользователи: `UsersRepository` (`findByEmail`, `create`). Сейчас это временное in-memory хранилище — заменить на Postgres-реализацию, сохранив интерфейс методов.
+
 ## Команды
 
 Из корня репозитория: `npm run dev:api`, `npm run build:api`, `npm run lint:api`.

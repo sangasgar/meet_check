@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module';
+import { PrismaService } from './../src/prisma/prisma.service';
 
 interface TokenResponse {
   accessToken: string;
@@ -26,6 +27,11 @@ describe('Auth (e2e)', () => {
 
     app = moduleFixture.createNestApplication();
     await app.init();
+
+    // Тесты работают с реальным Postgres — чистим таблицы перед каждым тестом.
+    const prisma = app.get(PrismaService);
+    await prisma.meeting.deleteMany();
+    await prisma.user.deleteMany();
   });
 
   afterEach(async () => {

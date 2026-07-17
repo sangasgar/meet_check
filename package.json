@@ -19,10 +19,12 @@
     "lint:api": "npm run lint --workspace api",
     "test": "npm run test --workspaces --if-present",
     "format": "prettier --write \"apps/**/*.{ts,tsx,js,jsx,mjs,json,css,md}\"",
-    "format:check": "prettier --check \"apps/**/*.{ts,tsx,js,jsx,mjs,json,css,md}\""
+    "format:check": "prettier --check \"apps/**/*.{ts,tsx,js,jsx,mjs,json,css,md}\"",
+    "prepare": "husky"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",
+    "husky": "^9.1.7",
     "prettier": "^3.4.2"
   },
   "engines": {

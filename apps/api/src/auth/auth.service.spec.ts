@@ -1,15 +1,20 @@
 import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import { CommandBus, QueryBus } from '@nestjs/cqrs';
 import { JwtService } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
 import * as bcrypt from 'bcrypt';
 
 import { AuthService } from './auth.service';
+import { CreateUserCommand } from '../users/commands/create-user.command';
+import { FindUserByEmailQuery } from '../users/queries/find-user-by-email.query';
 import { User } from '../users/user.entity';
-import { CreateUserData, UsersRepository } from '../users/users.repository';
 
-interface UsersRepositoryMock {
-  findByEmail: jest.Mock<Promise<User | null>, [string]>;
-  create: jest.Mock<Promise<User>, [CreateUserData]>;
+interface QueryBusMock {
+  execute: jest.Mock<Promise<User | null>, [FindUserByEmailQuery]>;
+}
+
+interface CommandBusMock {
+  execute: jest.Mock<Promise<User>, [CreateUserCommand]>;
 }
 
 interface JwtServiceMock {
@@ -18,7 +23,8 @@ interface JwtServiceMock {
 
 describe('AuthService', () => {
   let service: AuthService;
-  let usersRepository: UsersRepositoryMock;
+  let queryBus: QueryBusMock;
+  let commandBus: CommandBusMock;
   let jwtService: JwtServiceMock;
 
   const email = 'user@example.com';
@@ -35,10 +41,8 @@ describe('AuthService', () => {
   beforeEach(async () => {
     existingUser = { id: 'user-id-1', email, passwordHash };
 
-    usersRepository = {
-      findByEmail: jest.fn<Promise<User | null>, [string]>(),
-      create: jest.fn<Promise<User>, [CreateUserData]>(),
-    };
+    queryBus = { execute: jest.fn<Promise<User | null>, [FindUserByEmailQuery]>() };
+    commandBus = { execute: jest.fn<Promise<User>, [CreateUserCommand]>() };
     jwtService = {
       signAsync: jest
         .fn<Promise<string>, [Record<string, unknown>]>()
@@ -48,7 +52,8 @@ describe('AuthService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
-        { provide: UsersRepository, useValue: usersRepository },
+        { provide: QueryBus, useValue: queryBus },
+        { provide: CommandBus, useValue: commandBus },
         { provide: JwtService, useValue: jwtService },
       ],
     }).compile();
@@ -57,12 +62,12 @@ describe('AuthService', () => {
   });
 
   describe('login', () => {
-    it('ищет пользователя по e-mail и возвращает JWT-токен при верном пароле', async () => {
-      usersRepository.findByEmail.mockResolvedValue(existingUser);
+    it('ищет пользователя запросом FindUserByEmailQuery и возвращает JWT при верном пароле', async () => {
+      queryBus.execute.mockResolvedValue(existingUser);
 
       const result = await service.login(email, password);
 
-      expect(usersRepository.findByEmail).toHaveBeenCalledWith(email);
+      expect(queryBus.execute).toHaveBeenCalledWith(new FindUserByEmailQuery(email));
       expect(jwtService.signAsync).toHaveBeenCalledWith({
         sub: existingUser.id,
         email: existingUser.email,
@@ -71,65 +76,75 @@ describe('AuthService', () => {
     });
 
     it('бросает UnauthorizedException и не выдаёт токен, если пользователь не найден', async () => {
-      usersRepository.findByEmail.mockResolvedValue(null);
+      queryBus.execute.mockResolvedValue(null);
 
       await expect(service.login(email, password)).rejects.toThrow(UnauthorizedException);
       expect(jwtService.signAsync).not.toHaveBeenCalled();
     });
 
     it('бросает UnauthorizedException и не выдаёт токен при неверном пароле', async () => {
-      usersRepository.findByEmail.mockResolvedValue(existingUser);
+      queryBus.execute.mockResolvedValue(existingUser);
 
       await expect(service.login(email, 'wrong-password')).rejects.toThrow(UnauthorizedException);
       expect(jwtService.signAsync).not.toHaveBeenCalled();
     });
 
-    it('не создаёт нового пользователя ни при успехе, ни при неудаче', async () => {
-      usersRepository.findByEmail.mockResolvedValue(existingUser);
+    it('не отправляет команд (ничего не создаёт) при входе', async () => {
+      queryBus.execute.mockResolvedValue(existingUser);
       await service.login(email, password);
 
-      usersRepository.findByEmail.mockResolvedValue(null);
+      queryBus.execute.mockResolvedValue(null);
       await expect(service.login('unknown@example.com', password)).rejects.toThrow(
         UnauthorizedException,
       );
 
-      expect(usersRepository.create).not.toHaveBeenCalled();
+      expect(commandBus.execute).not.toHaveBeenCalled();
     });
   });
 
   describe('register', () => {
-    it('создаёт нового пользователя и возвращает JWT-токен', async () => {
-      usersRepository.findByEmail.mockResolvedValue(null);
-      usersRepository.create.mockImplementation((data) =>
-        Promise.resolve({ id: 'new-user-id', ...data }),
+    it('создаёт пользователя командой CreateUserCommand и возвращает JWT', async () => {
+      queryBus.execute.mockResolvedValue(null);
+      commandBus.execute.mockImplementation((command) =>
+        Promise.resolve({
+          id: 'new-user-id',
+          email: command.email,
+          passwordHash: command.passwordHash,
+        }),
       );
 
       const result = await service.register(email, password);
 
-      expect(usersRepository.create).toHaveBeenCalledTimes(1);
-      expect(usersRepository.create.mock.calls[0][0].email).toBe(email);
+      expect(commandBus.execute).toHaveBeenCalledTimes(1);
+      const command = commandBus.execute.mock.calls[0][0];
+      expect(command).toBeInstanceOf(CreateUserCommand);
+      expect(command.email).toBe(email);
       expect(jwtService.signAsync).toHaveBeenCalledWith({ sub: 'new-user-id', email });
       expect(result).toEqual({ accessToken: signedToken });
     });
 
-    it('сохраняет пароль в виде bcrypt-хеша, а не открытым текстом', async () => {
-      usersRepository.findByEmail.mockResolvedValue(null);
-      usersRepository.create.mockImplementation((data) =>
-        Promise.resolve({ id: 'new-user-id', ...data }),
+    it('передаёт в команду bcrypt-хеш пароля, а не открытый текст', async () => {
+      queryBus.execute.mockResolvedValue(null);
+      commandBus.execute.mockImplementation((command) =>
+        Promise.resolve({
+          id: 'new-user-id',
+          email: command.email,
+          passwordHash: command.passwordHash,
+        }),
       );
 
       await service.register(email, password);
 
-      const storedHash = usersRepository.create.mock.calls[0][0].passwordHash;
+      const storedHash = commandBus.execute.mock.calls[0][0].passwordHash;
       expect(storedHash).not.toBe(password);
       await expect(bcrypt.compare(password, storedHash)).resolves.toBe(true);
     });
 
-    it('бросает ConflictException и никого не создаёт, если e-mail уже занят', async () => {
-      usersRepository.findByEmail.mockResolvedValue(existingUser);
+    it('бросает ConflictException и не отправляет команду, если e-mail уже занят', async () => {
+      queryBus.execute.mockResolvedValue(existingUser);
 
       await expect(service.register(email, password)).rejects.toThrow(ConflictException);
-      expect(usersRepository.create).not.toHaveBeenCalled();
+      expect(commandBus.execute).not.toHaveBeenCalled();
       expect(jwtService.signAsync).not.toHaveBeenCalled();
     });
   });

@@ -1,31 +1,22 @@
 import { Injectable } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
 
 import { User } from './user.entity';
+import { PrismaService } from '../prisma/prisma.service';
 
 export interface CreateUserData {
   email: string;
   passwordHash: string;
 }
 
-// Временное in-memory хранилище: будет заменено на Postgres-реализацию,
-// интерфейс методов при этом сохранится.
 @Injectable()
 export class UsersRepository {
-  private readonly users = new Map<string, User>();
+  constructor(private readonly prisma: PrismaService) {}
 
   findByEmail(email: string): Promise<User | null> {
-    for (const user of this.users.values()) {
-      if (user.email === email) {
-        return Promise.resolve(user);
-      }
-    }
-    return Promise.resolve(null);
+    return this.prisma.user.findUnique({ where: { email } });
   }
 
   create(data: CreateUserData): Promise<User> {
-    const user: User = { id: randomUUID(), ...data };
-    this.users.set(user.id, user);
-    return Promise.resolve(user);
+    return this.prisma.user.create({ data });
   }
 }
